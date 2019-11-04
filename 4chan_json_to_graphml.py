@@ -58,9 +58,10 @@ def json_to_graphml(data, filename):
         graph_file.write("<graph id=\"G\" edgedefault=\"directed\"><data key=\"g_type\">www-hyperlink</data>\n")
 
         span = re.compile("(<span .*>.*<\\s*\\/span>)")
-        symb = re.compile("(&(\\w+;)?)")
         a = re.compile("(<a .*>.*<\\s*\\/a>)")
         br = re.compile("(<br\\s*\\/?>)")
+        symb = re.compile("(&(\\w+;)?)|(<|>)")
+        link = re.compile("(https?://[^\\s]+)")
 
         # Loop through all posts in a thread
         for post in data['posts']:
@@ -73,7 +74,7 @@ def json_to_graphml(data, filename):
             # post number as the name
             graph_file.write("<node id=\""+node_id+"\">\n")
             graph_file.write("\t<data key=\"v_name\">"+str(post['no'])+"</data>\n")
-            sanitised_comment = symb.sub("", br.sub("", a.sub("", span.sub("", post['com'])))).replace("&", "").replace(">", "")
+            sanitised_comment = symb.sub("", quote.sub("", link.sub("", a.sub("", span.sub("", br.sub(" ", post['com'])))))).replace("\n", " ")
             graph_file.write("\t<data key=\"v_comment\">"+sanitised_comment+"</data>\n")
             graph_file.write("</node>\n")
 
@@ -122,6 +123,12 @@ def desu_to_graphml(data, filename):
         # Create a regular expression to catch
         # replies in a post's text
         quote = re.compile("(>>\\d+)")
+        
+        span = re.compile("(<span .*>.*<\\s*\\/span>)")
+        a = re.compile("(<a .*>.*<\\s*\\/a>)")
+        br = re.compile("(<br\\s*\\/?>)")
+        symb = re.compile("(&(\\w+;)?)|(<|>)")
+        link = re.compile("(https?://[^\\s]+)")
 
         # Create a counter to keep track of
         # the current node id
@@ -145,7 +152,7 @@ def desu_to_graphml(data, filename):
         # post number as the name
         graph_file.write("<node id=\""+node_id+"\">\n")
         graph_file.write("\t<data key=\"v_name\">"+str(post['num'])+"</data>\n")
-        sanitised_comment = str(post['comment']).replace(">", "").replace("&", "").replace("\n", " ")
+        sanitised_comment = symb.sub("", quote.sub("", link.sub("", a.sub("", span.sub("", br.sub(" ", post['comment'])))))).replace("\n", " ")
         graph_file.write("\t<data key=\"v_comment\">"+sanitised_comment+"</data>\n")
         graph_file.write("</node>\n")
 
@@ -166,11 +173,11 @@ def desu_to_graphml(data, filename):
             # post number as the name
             graph_file.write("<node id=\""+node_id+"\">\n")
             graph_file.write("\t<data key=\"v_name\">"+str(post['num'])+"</data>\n")
-            sanitised_comment = str(post['comment']).replace(">", "").replace("&", "").replace("\n", " ")
+            sanitised_comment = symb.sub("", quote.sub("", link.sub("", a.sub("", span.sub("", br.sub(" ", post['comment'])))))).replace("\n", " ")
             graph_file.write("\t<data key=\"v_comment\">"+sanitised_comment+"</data>\n")
             graph_file.write("</node>\n")
 
-            # If the post has text, parse it for
+            # If the post has text, parse it for.replace("%", "")
             # replies
             if "comment" in post.keys():
 
