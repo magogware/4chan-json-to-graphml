@@ -33,7 +33,7 @@ args = parser.parse_args()
 ###############
 
 
-def json_to_graphml(data, filename):
+def json_to_graphml(data, filename, desu):
 
     # Open graphml file for writing
     with open(filename, "w+") as graph_file:
@@ -42,9 +42,22 @@ def json_to_graphml(data, filename):
         # node id corresponding to a post number
         d = {'a':1}
         
-        # Create a regular expression to catch
-        # replies in a post's text
-        quote = re.compile("(&gt;&gt;\\d+)")
+        # Create appropriate regex to catch
+        # replies and comments (depending on JSON source)
+        if desu:
+            quote = re.compile("(&gt;&gt;\\d+)")
+            comment = "comment"
+            num = "num"
+
+            # If using desuarchive, strip the thread
+            # number heading from the JSON
+            threadnum = list(data.keys())[0]
+            data = data[threadnum]
+
+        else:
+            quote = re.compile("(>>\\d+)")
+            comment = "com"
+            num = "no"
 
         # Create a counter to keep track of
         # the current node id
@@ -57,139 +70,78 @@ def json_to_graphml(data, filename):
         graph_file.write("<key id=\"v_comment\" for=\"node\" attr.name=\"comment\" attr.type=\"string\"/>\n")
         graph_file.write("<graph id=\"G\" edgedefault=\"directed\"><data key=\"g_type\">www-hyperlink</data>\n")
 
+        # Compile some regex to catch expressions that will break XML
         span = re.compile("(<span .*>.*<\\s*\\/span>)")
         a = re.compile("(<a .*>.*<\\s*\\/a>)")
         br = re.compile("(<br\\s*\\/?>)")
         symb = re.compile("(&(\\w+;)?)|(<|>)")
         link = re.compile("(https?://[^\\s]+)")
+        
+        # If using desuarchive JSON, parse the
+        # OP post (which is in a separate JSON field)
+        if desu:
+
+            # Store the OP as node 0
+            post = data['op']
+            
+            # Create the node id string
+            node_id = "n"+str(i)
+            d[(post[num])] = node_id
+            
+            # Print the node XML, using the
+            # post number as the name
+            graph_file.write("<node id=\""+node_id+"\">\n")
+            graph_file.write("\t<data key=\"v_name\">"+str(post['num'])+"</data>\n")
+            sanitised_comment = symb.sub("", quote.sub("", link.sub("", a.sub("", span.sub("", br.sub(" ", post[comment])))))).replace("\n", " ")
+            graph_file.write("\t<data key=\"v_comment\">"+sanitised_comment+"</data>\n")
+            graph_file.write("</node>\n")
+            
+            # Increment the counter
+            i = i + 1
 
         # Loop through all posts in a thread
-        for post in data['posts']:
+        data = data['posts']
+        if desu:
+            keys = list(data.keys())
+        else:
+            keys = data
+        for key in keys:
+            if desu:
+                post = data[key]
+            else:
+                post = key
 
             # Create the node id string
             node_id = "n"+str(i)
-            d[str(post['no'])] = node_id
+            d[str(post[num])] = node_id
 
             # Print the node XML, using the
             # post number as the name
             graph_file.write("<node id=\""+node_id+"\">\n")
-            graph_file.write("\t<data key=\"v_name\">"+str(post['no'])+"</data>\n")
-            sanitised_comment = symb.sub("", quote.sub("", link.sub("", a.sub("", span.sub("", br.sub(" ", post['com'])))))).replace("\n", " ")
+            graph_file.write("\t<data key=\"v_name\">"+str(post[num])+"</data>\n")
+            if comment in post.keys():
+                sanitised_comment = symb.sub("", quote.sub("", link.sub("", a.sub("", span.sub("", br.sub(" ", post[comment])))))).replace("\n", " ")
+            else:
+                sanitised_comment = ""
             graph_file.write("\t<data key=\"v_comment\">"+sanitised_comment+"</data>\n")
             graph_file.write("</node>\n")
 
             # If the post has text, parse it for
             # replies
-            if "com" in post.keys():
+            if comment in post.keys():
 
                 # Use the regex to catch replies
-                text = post['com']
+                text = post[comment]
                 replies_to = quote.findall(text)
 
                 # Loop through all replies gathered
                 for reply in replies_to:
 
                     # Clean extra characters off reply
-                    reply = reply.replace("&gt;&gt;", "")
-
-                    # If we have information on the reply...
-                    if reply in d.keys():
-
-                        # Find the node id corresponding to the
-                        # post number being replied to
-                        replied_to = d[reply]
-
-                        # Construct the edge XML and print it
-                        edge_xml  = "<edge source=\""+node_id+"\" target=\""+replied_to+"\">"
-                        graph_file.write(edge_xml)
-                        graph_file.write("</edge>\n")
-
-            # Increment the node ID counter
-            i = i + 1
-
-        # Close off the GraphML
-        graph_file.write("</graph>\n</graphml>")
-
-def desu_to_graphml(data, filename):
-
-    with open(filename, "w+") as graph_file:
-        threadnum = list(data.keys())[0]
-        data = data[threadnum]
-
-        # Create a dictionary to store the
-        # node id corresponding to a post number
-        d = {'a':1}
-        
-        # Create a regular expression to catch
-        # replies in a post's text
-        quote = re.compile("(>>\\d+)")
-        
-        span = re.compile("(<span .*>.*<\\s*\\/span>)")
-        a = re.compile("(<a .*>.*<\\s*\\/a>)")
-        br = re.compile("(<br\\s*\\/?>)")
-        symb = re.compile("(&(\\w+;)?)|(<|>)")
-        link = re.compile("(https?://[^\\s]+)")
-
-        # Create a counter to keep track of
-        # the current node id
-        i = 0
-        
-        # Print out XML preamble
-        graph_file.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?><graphml xmlns=\"http://graphml.graphdrawing.org/xmlns\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd\">")
-        graph_file.write("<key id=\"g_type\" for=\"graph\" attr.name=\"type\" attr.type=\"string\"/>\n")
-        graph_file.write("<key id=\"v_name\" for=\"node\" attr.name=\"name\" attr.type=\"string\"/>\n")
-        graph_file.write("<key id=\"v_comment\" for=\"node\" attr.name=\"comment\" attr.type=\"string\"/>\n")
-        graph_file.write("<graph id=\"G\" edgedefault=\"directed\"><data key=\"g_type\">www-hyperlink</data>\n")
-
-        # Store the OP as node 0
-        post = data['op']
-        
-        # Create the node id string
-        node_id = "n"+str(i)
-        d[(post['num'])] = node_id
-
-        # Print the node XML, using the
-        # post number as the name
-        graph_file.write("<node id=\""+node_id+"\">\n")
-        graph_file.write("\t<data key=\"v_name\">"+str(post['num'])+"</data>\n")
-        sanitised_comment = symb.sub("", quote.sub("", link.sub("", a.sub("", span.sub("", br.sub(" ", post['comment'])))))).replace("\n", " ")
-        graph_file.write("\t<data key=\"v_comment\">"+sanitised_comment+"</data>\n")
-        graph_file.write("</node>\n")
-
-        # Increment the counter
-        i = i + 1
-
-        # Loop through posts
-        data = data['posts']
-        keys = list(data.keys())
-        for key in keys:
-            post = data[key]
-
-            # Create the node id string
-            node_id = "n"+str(i)
-            d[(post['num'])] = node_id
-
-            # Print the node XML, using the
-            # post number as the name
-            graph_file.write("<node id=\""+node_id+"\">\n")
-            graph_file.write("\t<data key=\"v_name\">"+str(post['num'])+"</data>\n")
-            sanitised_comment = symb.sub("", quote.sub("", link.sub("", a.sub("", span.sub("", br.sub(" ", post['comment'])))))).replace("\n", " ")
-            graph_file.write("\t<data key=\"v_comment\">"+sanitised_comment+"</data>\n")
-            graph_file.write("</node>\n")
-
-            # If the post has text, parse it for.replace("%", "")
-            # replies
-            if "comment" in post.keys():
-
-                # Use the regex to catch replies
-                text = post['comment']
-                replies_to = quote.findall(text)
-
-                # Loop through all replies gathered
-                for reply in replies_to:
-
-                    # Clean extra characters off reply
-                    reply = reply.replace(">>", "")
+                    if desu:
+                        reply = reply.replace(">>", "")
+                    else:
+                        reply = reply.replace("&gt;&gt;", "")
 
                     # If we have information on the reply...
                     if reply in d.keys():
@@ -223,9 +175,9 @@ if args.link:
         # Perform the correct parse for different
         # JSON layouts
         if args.desu:
-            desu_to_graphml(data, args.output)
+            json_to_graphml(data, args.output, True)
         else:
-            json_to_graphml(data, args.output)
+            json_to_graphml(data, args.output, False)
 
 # If we have a file, use that as our JSON source
 elif args.file:
@@ -237,6 +189,6 @@ elif args.file:
         # Perform the correct parse for different
         # JSON layouts
         if args.desu:
-            desu_to_graphml(data, args.output)
+            json_to_graphml(data, args.output, True)
         else:
-            json_to_graphml(data, args.output)
+            json_to_graphml(data, args.output, False)
